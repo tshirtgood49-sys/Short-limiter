@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Shorts Limiter</string>
+    <string name="accessibility_service_description">YouTube Shorts ki ginti karta hai aur limit cross hone par rok deta hai.</string>
+</resources>
