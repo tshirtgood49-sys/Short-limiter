@@ -3,6 +3,7 @@ package com.example.shortslimiter
 import android.content.Intent
 import android.net.VpnService
 import android.os.ParcelFileDescriptor
+import android.widget.Toast
 import java.io.FileInputStream
 
 class ShortsVpnService : VpnService() {
@@ -31,9 +32,22 @@ class ShortsVpnService : VpnService() {
         try {
             builder.addAllowedApplication(TARGET_PACKAGE)
         } catch (e: Exception) {
+            Toast.makeText(this, "Warning: YouTube allow-list fail (${e.javaClass.simpleName})", Toast.LENGTH_LONG).show()
         }
 
-        vpnInterface = builder.establish() ?: return
+        try {
+            vpnInterface = builder.establish()
+        } catch (e: Exception) {
+            Toast.makeText(this, "VPN start FAIL: ${e.javaClass.simpleName} - ${e.message}", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        if (vpnInterface == null) {
+            Toast.makeText(this, "VPN establish() ne null diya - permission revoke hui ho sakti hai", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        Toast.makeText(this, "VPN tunnel ON (YouTube blocked)", Toast.LENGTH_SHORT).show()
 
         workerThread = Thread {
             try {
