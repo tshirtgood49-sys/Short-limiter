@@ -14,7 +14,7 @@ import java.util.Locale
 class ShortsAccessibilityService : AccessibilityService() {
 
     private var lastCountedAt = 0L
-    private val debounceMs = 1000L
+    private val debounceMs = 700L
 
     private var wasOnShorts = false
     private var lastRedirectAt = 0L
@@ -41,7 +41,14 @@ class ShortsAccessibilityService : AccessibilityService() {
             wasOnShorts = true
 
             if (!limitReached) {
-                if (event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
+                val isNewVideoSignal = when (event.eventType) {
+                    AccessibilityEvent.TYPE_VIEW_SCROLLED -> true
+                    AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ->
+                        (event.contentChangeTypes and AccessibilityEvent.CONTENT_CHANGE_TYPE_SUBTREE) != 0
+                    else -> false
+                }
+
+                if (isNewVideoSignal) {
                     val now = System.currentTimeMillis()
                     if (now - lastCountedAt >= debounceMs) {
                         lastCountedAt = now
@@ -66,14 +73,13 @@ class ShortsAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() {}
 
-    // ---------- DEBUG: raw event log (sab apps ke events, koi filter nahi) ----------
     private fun logRawEvent(prefs: SharedPreferences, event: AccessibilityEvent) {
         val time = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
         val pkg = event.packageName?.toString() ?: "null"
         val typeName = when (event.eventType) {
             AccessibilityEvent.TYPE_VIEW_SCROLLED -> "SCROLLED"
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> "WINDOW_STATE"
-            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> "CONTENT_CHANGED"
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> "CONTENT_CHANGED(ct=${event.contentChangeTypes})"
             else -> "OTHER(${event.eventType})"
         }
         val line = "$time | $pkg | $typeName"
@@ -85,10 +91,9 @@ class ShortsAccessibilityService : AccessibilityService() {
         prefs.edit().putString("event_log", lines.joinToString("\n")).apply()
     }
 
-    // ---------- DEBUG: ID list, sirf tab save hoga jab root genuinely YouTube ka ho ----------
     private fun captureDebugInfo(prefs: SharedPreferences) {
         val root = rootInActiveWindow ?: return
-        if (root.packageName?.toString() != YOUTUBE_PACKAGE) return // race-condition guard
+        if (root.packageName?.toString() != YOUTUBE_PACKAGE) return
 
         val ids = LinkedHashSet<String>()
         collectIds(root, ids, 0)
@@ -126,7 +131,7 @@ class ShortsAccessibilityService : AccessibilityService() {
     private fun isShortsScreen(): Boolean {
         val root = rootInActiveWindow ?: return false
         if (root.packageName?.toString() != YOUTUBE_PACKAGE) return false
-        return nodeContains(root, "reel")
+        return nodeContains(root, "reel_recycler")
     }
 
     private fun nodeContains(node: AccessibilityNodeInfo, idFragment: String, depth: Int = 0): Boolean {
@@ -209,4 +214,4 @@ class ShortsAccessibilityService : AccessibilityService() {
     companion object {
         const val YOUTUBE_PACKAGE = "com.google.android.youtube"
     }
-}
+}                    
