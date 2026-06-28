@@ -71,6 +71,16 @@ class MainActivity : AppCompatActivity() {
                 .setPositiveButton("OK", null)
                 .show()
         }
+
+        findViewById<Button>(R.id.btnEventLog).setOnClickListener {
+            val prefs = getSharedPreferences(PrefsKeys.PREFS_NAME, MODE_PRIVATE)
+            val log = prefs.getString("event_log", "Koi event log nahi mila.")
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Last 15 Accessibility Events")
+                .setMessage(log)
+                .setPositiveButton("OK", null)
+                .show()
+        }
     }
 
     override fun onResume() {
