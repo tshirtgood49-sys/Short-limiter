@@ -57,11 +57,9 @@ class ShortsAccessibilityService : AccessibilityService() {
                     else -> {}
                 }
             } else {
-                // Limit pehle se cross hai aur user phir bhi Shorts par hai
                 blockShortsNow(prefs)
             }
         } else {
-            // User Shorts se bahar aa gaya (Home / Search / Long video / koi aur app)
             if (wasOnShorts && vpnIsActive) {
                 stopVpnBlock()
             }
@@ -126,30 +124,48 @@ class ShortsAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * YouTube ke andar hi "Home" tab par bhejta hai (phone ke home screen par nahi).
-     * Pehle bottom-nav me "Home" button dhoondh ke click karta hai.
-     * Nahi mila to thoda back jaata hai, aur agar fir bhi Shorts par hi hai
-     * to YouTube app ko fresh restart karta hai (jo default Home tab kholta hai).
+     * YouTube ke andar "Home" tab par bhejta hai.
+     * Step 1: "Home" label wala node dhoondho, aur agar wo khud clickable
+     *         nahi hai to uske parents me se sabse pehla clickable wala dhoondo.
+     * Step 2: Agar kuch na mile to 2-3 baar back press karke Shorts se bahar nikalo.
      */
     private fun goToYouTubeHomeTab() {
         val root = rootInActiveWindow
-        val homeNode = root?.let { findClickableNodeByLabel(it, "Home", depth = 0) }
+        val homeNode = root?.let { findClickableAncestorByLabel(it, "Home") }
 
-        if (homeNode != null) {
-            homeNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        if (homeNode != null && homeNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
             return
         }
 
-        performGlobalAction(GLOBAL_ACTION_BACK)
-
-        mainHandler.postDelayed({
-            if (isShortsScreen()) {
-                relaunchYouTubeToHome()
-            }
-        }, 400)
+        backOutOfShorts(attemptsLeft = 3)
     }
 
-    private fun findClickableNodeByLabel(
+    private fun backOutOfShorts(attemptsLeft: Int) {
+        if (attemptsLeft <= 0) return
+        performGlobalAction(GLOBAL_ACTION_BACK)
+        mainHandler.postDelayed({
+            if (isShortsScreen()) {
+                backOutOfShorts(attemptsLeft - 1)
+            }
+        }, 350)
+    }
+
+    private fun findClickableAncestorByLabel(
+        root: AccessibilityNodeInfo,
+        label: String
+    ): AccessibilityNodeInfo? {
+        val match = findNodeByLabel(root, label, depth = 0) ?: return null
+        var current: AccessibilityNodeInfo? = match
+        var hops = 0
+        while (current != null && hops < 6) {
+            if (current.isClickable) return current
+            current = current.parent
+            hops++
+        }
+        return null
+    }
+
+    private fun findNodeByLabel(
         node: AccessibilityNodeInfo,
         label: String,
         depth: Int
@@ -158,25 +174,18 @@ class ShortsAccessibilityService : AccessibilityService() {
 
         val desc = node.contentDescription?.toString()
         val text = node.text?.toString()
-        val matches = desc?.equals(label, ignoreCase = true) == true ||
-                text?.equals(label, ignoreCase = true) == true
-
-        if (matches && node.isClickable) return node
+        if (desc?.equals(label, ignoreCase = true) == true ||
+            text?.equals(label, ignoreCase = true) == true
+        ) {
+            return node
+        }
 
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
-            val found = findClickableNodeByLabel(child, label, depth + 1)
+            val found = findNodeByLabel(child, label, depth + 1)
             if (found != null) return found
         }
         return null
-    }
-
-    private fun relaunchYouTubeToHome() {
-        val launchIntent = packageManager.getLaunchIntentForPackage(YOUTUBE_PACKAGE)
-        launchIntent?.let {
-            it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            startActivity(it)
-        }
     }
 
     private fun startVpnBlock() {
@@ -195,3 +204,5 @@ class ShortsAccessibilityService : AccessibilityService() {
         const val YOUTUBE_PACKAGE = "com.google.android.youtube"
     }
 }
+                     
+        
