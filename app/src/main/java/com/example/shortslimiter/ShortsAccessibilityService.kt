@@ -7,24 +7,32 @@ import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.Toast
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 class ShortsAccessibilityService : AccessibilityService() {
 
-    // Pichla koi bhi YouTube event kab aaya tha (uske basis par "naya burst" decide hota hai)
     private var lastEventAt = 0L
-    private val burstGapMs = 600L
+    private val burstGapMs = 450L
 
-    // Do counts ke beech minimum gap (safety - rapid double-count na ho)
     private var lastCountedAt = 0L
-    private val minCountIntervalMs = 1000L
+    private val minCountIntervalMs = 700L
 
     private var wasOnShorts = false
     private var lastRedirectAt = 0L
-    private val redirectCooldownMs = 1500L
+    private val redirectCooldownMs = 700L
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    private val motivationMessages = listOf(
+        "Bas itna hi! Ab kuch productive karo 💪",
+        "Time qeemti hai - kuch naya seekho aaj",
+        "Shorts band, ab apna kaam shuru karo",
+        "Chhod do Shorts, kitaab ya kaam pe focus karo",
+        "Tumhara waqt important hai - sahi jagah lagao",
+        "Aaj ki limit poori - kal phir milte hain Shorts se"
+    )
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         event ?: return
@@ -79,6 +87,24 @@ class ShortsAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() {}
 
+    private fun blockShortsNow(prefs: SharedPreferences) {
+        startVpnBlock()
+
+        val now = System.currentTimeMillis()
+        if (now - lastRedirectAt > redirectCooldownMs) {
+            lastRedirectAt = now
+            goToYouTubeHomeTab()
+            showMotivationMessage()
+        }
+    }
+
+    private fun showMotivationMessage() {
+        val msg = motivationMessages.random()
+        mainHandler.post {
+            Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun logRawEvent(prefs: SharedPreferences, event: AccessibilityEvent) {
         val time = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
         val pkg = event.packageName?.toString() ?: "null"
@@ -112,15 +138,6 @@ class ShortsAccessibilityService : AccessibilityService() {
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
             collectIds(child, ids, depth + 1)
-        }
-    }
-
-    private fun blockShortsNow(prefs: SharedPreferences) {
-        startVpnBlock()
-        val now = System.currentTimeMillis()
-        if (now - lastRedirectAt > redirectCooldownMs) {
-            lastRedirectAt = now
-            goToYouTubeHomeTab()
         }
     }
 
@@ -168,7 +185,7 @@ class ShortsAccessibilityService : AccessibilityService() {
             if (isShortsScreen()) {
                 backOutOfShorts(attemptsLeft - 1)
             }
-        }, 350)
+        }, 180)
     }
 
     private fun findClickableAncestorByLabel(
