@@ -14,7 +14,7 @@ import java.util.Locale
 class ShortsAccessibilityService : AccessibilityService() {
 
     private var lastCountedAt = 0L
-    private val debounceMs = 800L
+    private val debounceMs = 1000L
 
     private var wasOnShorts = false
     private var lastRedirectAt = 0L
@@ -37,22 +37,20 @@ class ShortsAccessibilityService : AccessibilityService() {
             wasOnShorts = true
 
             if (!limitReached) {
-                when (event.eventType) {
-                    AccessibilityEvent.TYPE_VIEW_SCROLLED,
-                    AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
-                    AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
-                        val now = System.currentTimeMillis()
-                        if (now - lastCountedAt >= debounceMs) {
-                            lastCountedAt = now
-                            val newCount = count + 1
-                            prefs.edit().putInt(PrefsKeys.KEY_COUNT, newCount).apply()
+                // Sirf SCROLL event par count badhao - naya Short = ek scroll/swipe.
+                // Window/content-changed events (jo same Short par bhi baar-baar
+                // fire hote hain) ko ignore karo.
+                if (event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
+                    val now = System.currentTimeMillis()
+                    if (now - lastCountedAt >= debounceMs) {
+                        lastCountedAt = now
+                        val newCount = count + 1
+                        prefs.edit().putInt(PrefsKeys.KEY_COUNT, newCount).apply()
 
-                            if (newCount > limit) {
-                                blockShortsNow(prefs)
-                            }
+                        if (newCount > limit) {
+                            blockShortsNow(prefs)
                         }
                     }
-                    else -> {}
                 }
             } else {
                 blockShortsNow(prefs)
@@ -89,7 +87,7 @@ class ShortsAccessibilityService : AccessibilityService() {
 
     private fun isShortsScreen(): Boolean {
         val root = rootInActiveWindow ?: return false
-        return nodeContains(root, "reel_recycler") || nodeHasText(root, "Shorts", depth = 0)
+        return nodeContains(root, "reel")
     }
 
     private fun nodeContains(node: AccessibilityNodeInfo, idFragment: String, depth: Int = 0): Boolean {
@@ -103,23 +101,6 @@ class ShortsAccessibilityService : AccessibilityService() {
         return false
     }
 
-    private fun nodeHasText(node: AccessibilityNodeInfo, text: String, depth: Int): Boolean {
-        if (depth > 8) return false
-        val desc = node.contentDescription?.toString()
-        if (desc != null && desc.equals(text, ignoreCase = true)) return true
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            if (nodeHasText(child, text, depth + 1)) return true
-        }
-        return false
-    }
-
-    /**
-     * YouTube ke andar "Home" tab par bhejta hai.
-     * Step 1: "Home" label wala node dhoondho, aur agar wo khud clickable
-     *         nahi hai to uske parents me se sabse pehla clickable wala dhoondo.
-     * Step 2: Agar kuch na mile to 2-3 baar back press karke Shorts se bahar nikalo.
-     */
     private fun goToYouTubeHomeTab() {
         val root = rootInActiveWindow
         val homeNode = root?.let { findClickableAncestorByLabel(it, "Home") }
@@ -192,4 +173,5 @@ class ShortsAccessibilityService : AccessibilityService() {
     companion object {
         const val YOUTUBE_PACKAGE = "com.google.android.youtube"
     }
-}        
+}
+                             
