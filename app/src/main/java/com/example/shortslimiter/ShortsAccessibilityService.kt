@@ -13,8 +13,13 @@ import java.util.Locale
 
 class ShortsAccessibilityService : AccessibilityService() {
 
+    // Pichla koi bhi YouTube event kab aaya tha (uske basis par "naya burst" decide hota hai)
+    private var lastEventAt = 0L
+    private val burstGapMs = 600L
+
+    // Do counts ke beech minimum gap (safety - rapid double-count na ho)
     private var lastCountedAt = 0L
-    private val debounceMs = 700L
+    private val minCountIntervalMs = 1000L
 
     private var wasOnShorts = false
     private var lastRedirectAt = 0L
@@ -32,6 +37,10 @@ class ShortsAccessibilityService : AccessibilityService() {
         resetIfNewDay(prefs)
         captureDebugInfo(prefs)
 
+        val now = System.currentTimeMillis()
+        val gapSincePrevEvent = now - lastEventAt
+        lastEventAt = now
+
         val onShorts = isShortsScreen()
         val limit = prefs.getInt(PrefsKeys.KEY_LIMIT, PrefsKeys.DEFAULT_LIMIT)
         val count = prefs.getInt(PrefsKeys.KEY_COUNT, 0)
@@ -41,23 +50,20 @@ class ShortsAccessibilityService : AccessibilityService() {
             wasOnShorts = true
 
             if (!limitReached) {
-                val isNewVideoSignal = when (event.eventType) {
-                    AccessibilityEvent.TYPE_VIEW_SCROLLED -> true
-                    AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ->
-                        (event.contentChangeTypes and AccessibilityEvent.CONTENT_CHANGE_TYPE_SUBTREE) != 0
-                    else -> false
-                }
+                val isRelevantType = event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED ||
+                        (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
+                                (event.contentChangeTypes and AccessibilityEvent.CONTENT_CHANGE_TYPE_SUBTREE) != 0)
 
-                if (isNewVideoSignal) {
-                    val now = System.currentTimeMillis()
-                    if (now - lastCountedAt >= debounceMs) {
-                        lastCountedAt = now
-                        val newCount = count + 1
-                        prefs.edit().putInt(PrefsKeys.KEY_COUNT, newCount).apply()
+                val isNewBurst = gapSincePrevEvent > burstGapMs
+                val enoughTimeSinceLastCount = now - lastCountedAt >= minCountIntervalMs
 
-                        if (newCount > limit) {
-                            blockShortsNow(prefs)
-                        }
+                if (isRelevantType && isNewBurst && enoughTimeSinceLastCount) {
+                    lastCountedAt = now
+                    val newCount = count + 1
+                    prefs.edit().putInt(PrefsKeys.KEY_COUNT, newCount).apply()
+
+                    if (newCount > limit) {
+                        blockShortsNow(prefs)
                     }
                 }
             } else {
@@ -214,4 +220,4 @@ class ShortsAccessibilityService : AccessibilityService() {
     companion object {
         const val YOUTUBE_PACKAGE = "com.google.android.youtube"
     }
-}                    
+}
