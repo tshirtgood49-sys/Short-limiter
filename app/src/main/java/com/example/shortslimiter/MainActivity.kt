@@ -48,16 +48,23 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.btnSetLimit).setOnClickListener {
-            val newLimit = editLimit.text.toString().toIntOrNull()
-            if (newLimit == null || newLimit <= 0) {
+            val rawLimit = editLimit.text.toString().toIntOrNull()
+            if (rawLimit == null || rawLimit <= 0) {
                 Toast.makeText(this, "Sahi number daalo (1 ya usse zyada)", Toast.LENGTH_SHORT).show()
             } else {
+                val finalLimit = rawLimit.coerceAtMost(MAX_LIMIT)
                 val prefs = getSharedPreferences(PrefsKeys.PREFS_NAME, MODE_PRIVATE)
                 prefs.edit()
-                    .putInt(PrefsKeys.KEY_LIMIT, newLimit)
+                    .putInt(PrefsKeys.KEY_LIMIT, finalLimit)
                     .putInt(PrefsKeys.KEY_COUNT, 0)
                     .apply()
-                Toast.makeText(this, "Naya limit set hua: $newLimit (ginti bhi reset hui)", Toast.LENGTH_SHORT).show()
+
+                val msg = if (rawLimit > MAX_LIMIT) {
+                    "Max limit $MAX_LIMIT hi allowed hai, isliye $MAX_LIMIT set kiya (ginti reset hui)"
+                } else {
+                    "Naya limit set hua: $finalLimit (ginti bhi reset hui)"
+                }
+                Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
                 updateStatus()
             }
         }
@@ -102,5 +109,6 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         const val VPN_REQUEST_CODE = 100
+        const val MAX_LIMIT = 20
     }
 }
