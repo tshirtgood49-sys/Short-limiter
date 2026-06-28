@@ -23,9 +23,12 @@ class ShortsAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         event ?: return
-        if (event.packageName?.toString() != YOUTUBE_PACKAGE) return
 
         val prefs = getSharedPreferences(PrefsKeys.PREFS_NAME, MODE_PRIVATE)
+        logRawEvent(prefs, event)
+
+        if (event.packageName?.toString() != YOUTUBE_PACKAGE) return
+
         resetIfNewDay(prefs)
         captureDebugInfo(prefs)
 
@@ -63,9 +66,46 @@ class ShortsAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() {}
 
+    // ---------- DEBUG: raw event log (sab apps ke events, koi filter nahi) ----------
+    private fun logRawEvent(prefs: SharedPreferences, event: AccessibilityEvent) {
+        val time = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
+        val pkg = event.packageName?.toString() ?: "null"
+        val typeName = when (event.eventType) {
+            AccessibilityEvent.TYPE_VIEW_SCROLLED -> "SCROLLED"
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> "WINDOW_STATE"
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> "CONTENT_CHANGED"
+            else -> "OTHER(${event.eventType})"
+        }
+        val line = "$time | $pkg | $typeName"
+
+        val existing = prefs.getString("event_log", "") ?: ""
+        val lines = existing.split("\n").filter { it.isNotBlank() }.toMutableList()
+        lines.add(line)
+        while (lines.size > 15) lines.removeAt(0)
+        prefs.edit().putString("event_log", lines.joinToString("\n")).apply()
+    }
+
+    // ---------- DEBUG: ID list, sirf tab save hoga jab root genuinely YouTube ka ho ----------
+    private fun captureDebugInfo(prefs: SharedPreferences) {
+        val root = rootInActiveWindow ?: return
+        if (root.packageName?.toString() != YOUTUBE_PACKAGE) return // race-condition guard
+
+        val ids = LinkedHashSet<String>()
+        collectIds(root, ids, 0)
+        prefs.edit().putString("debug_ids", ids.take(60).joinToString("\n")).apply()
+    }
+
+    private fun collectIds(node: AccessibilityNodeInfo, ids: MutableSet<String>, depth: Int) {
+        if (depth > 18) return
+        node.viewIdResourceName?.let { ids.add(it) }
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            collectIds(child, ids, depth + 1)
+        }
+    }
+
     private fun blockShortsNow(prefs: SharedPreferences) {
         startVpnBlock()
-
         val now = System.currentTimeMillis()
         if (now - lastRedirectAt > redirectCooldownMs) {
             lastRedirectAt = now
@@ -85,6 +125,7 @@ class ShortsAccessibilityService : AccessibilityService() {
 
     private fun isShortsScreen(): Boolean {
         val root = rootInActiveWindow ?: return false
+        if (root.packageName?.toString() != YOUTUBE_PACKAGE) return false
         return nodeContains(root, "reel")
     }
 
@@ -106,7 +147,6 @@ class ShortsAccessibilityService : AccessibilityService() {
         if (homeNode != null && homeNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
             return
         }
-
         backOutOfShorts(attemptsLeft = 3)
     }
 
@@ -141,7 +181,6 @@ class ShortsAccessibilityService : AccessibilityService() {
         depth: Int
     ): AccessibilityNodeInfo? {
         if (depth > 14) return null
-
         val desc = node.contentDescription?.toString()
         val text = node.text?.toString()
         if (desc?.equals(label, ignoreCase = true) == true ||
@@ -149,29 +188,12 @@ class ShortsAccessibilityService : AccessibilityService() {
         ) {
             return node
         }
-
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
             val found = findNodeByLabel(child, label, depth + 1)
             if (found != null) return found
         }
         return null
-    }
-
-    private fun captureDebugInfo(prefs: SharedPreferences) {
-        val root = rootInActiveWindow ?: return
-        val ids = LinkedHashSet<String>()
-        collectIds(root, ids, 0)
-        prefs.edit().putString("debug_ids", ids.take(60).joinToString("\n")).apply()
-    }
-
-    private fun collectIds(node: AccessibilityNodeInfo, ids: MutableSet<String>, depth: Int) {
-        if (depth > 18) return
-        node.viewIdResourceName?.let { ids.add(it) }
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            collectIds(child, ids, depth + 1)
-        }
     }
 
     private fun startVpnBlock() {
