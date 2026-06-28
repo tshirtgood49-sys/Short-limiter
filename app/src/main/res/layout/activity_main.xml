@@ -66,10 +66,11 @@
         android:text="Debug: ID List Dekho"
         android:layout_marginTop="24dp" />
 
-</LinearLayout>
-<Button
+    <Button
         android:id="@+id/btnEventLog"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Debug: Event Log Dekho"
         android:layout_marginTop="12dp" />
+
+</LinearLayout>
