@@ -32,6 +32,31 @@
         android:id="@+id/btnReset"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Aaj ki Ginti Reset Karo" />
+        android:text="Aaj ki Ginti Reset Karo"
+        android:layout_marginBottom="24dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <EditText
+            android:id="@+id/editLimit"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:inputType="number"
+            android:hint="Shorts limit"
+            android:maxLength="3"
+            android:layout_marginEnd="8dp" />
+
+        <Button
+            android:id="@+id/btnSetLimit"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Set Limit" />
+
+    </LinearLayout>
 
 </LinearLayout>
