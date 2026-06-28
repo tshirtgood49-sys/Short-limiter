@@ -7,7 +7,6 @@ import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import android.widget.Toast
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -18,7 +17,6 @@ class ShortsAccessibilityService : AccessibilityService() {
     private val debounceMs = 800L
 
     private var wasOnShorts = false
-    private var vpnIsActive = false
     private var lastRedirectAt = 0L
     private val redirectCooldownMs = 1500L
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -60,7 +58,7 @@ class ShortsAccessibilityService : AccessibilityService() {
                 blockShortsNow(prefs)
             }
         } else {
-            if (wasOnShorts && vpnIsActive) {
+            if (wasOnShorts) {
                 stopVpnBlock()
             }
             wasOnShorts = false
@@ -70,14 +68,7 @@ class ShortsAccessibilityService : AccessibilityService() {
     override fun onInterrupt() {}
 
     private fun blockShortsNow(prefs: SharedPreferences) {
-        if (!vpnIsActive) {
-            startVpnBlock()
-            Toast.makeText(
-                this,
-                "Aaj ki Shorts limit poori! Shorts ka internet band kiya gaya.",
-                Toast.LENGTH_SHORT
-            ).show()
-        }
+        startVpnBlock()
 
         val now = System.currentTimeMillis()
         if (now - lastRedirectAt > redirectCooldownMs) {
@@ -189,12 +180,10 @@ class ShortsAccessibilityService : AccessibilityService() {
     }
 
     private fun startVpnBlock() {
-        vpnIsActive = true
         startService(Intent(this, ShortsVpnService::class.java))
     }
 
     private fun stopVpnBlock() {
-        vpnIsActive = false
         val intent = Intent(this, ShortsVpnService::class.java)
         intent.action = ShortsVpnService.ACTION_STOP
         startService(intent)
@@ -203,6 +192,4 @@ class ShortsAccessibilityService : AccessibilityService() {
     companion object {
         const val YOUTUBE_PACKAGE = "com.google.android.youtube"
     }
-}
-                     
-        
+}        
