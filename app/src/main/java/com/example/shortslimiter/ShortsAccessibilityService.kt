@@ -27,6 +27,7 @@ class ShortsAccessibilityService : AccessibilityService() {
 
         val prefs = getSharedPreferences(PrefsKeys.PREFS_NAME, MODE_PRIVATE)
         resetIfNewDay(prefs)
+        captureDebugInfo(prefs)
 
         val onShorts = isShortsScreen()
         val limit = prefs.getInt(PrefsKeys.KEY_LIMIT, PrefsKeys.DEFAULT_LIMIT)
@@ -37,9 +38,6 @@ class ShortsAccessibilityService : AccessibilityService() {
             wasOnShorts = true
 
             if (!limitReached) {
-                // Sirf SCROLL event par count badhao - naya Short = ek scroll/swipe.
-                // Window/content-changed events (jo same Short par bhi baar-baar
-                // fire hote hain) ko ignore karo.
                 if (event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
                     val now = System.currentTimeMillis()
                     if (now - lastCountedAt >= debounceMs) {
@@ -160,6 +158,22 @@ class ShortsAccessibilityService : AccessibilityService() {
         return null
     }
 
+    private fun captureDebugInfo(prefs: SharedPreferences) {
+        val root = rootInActiveWindow ?: return
+        val ids = LinkedHashSet<String>()
+        collectIds(root, ids, 0)
+        prefs.edit().putString("debug_ids", ids.take(60).joinToString("\n")).apply()
+    }
+
+    private fun collectIds(node: AccessibilityNodeInfo, ids: MutableSet<String>, depth: Int) {
+        if (depth > 18) return
+        node.viewIdResourceName?.let { ids.add(it) }
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            collectIds(child, ids, depth + 1)
+        }
+    }
+
     private fun startVpnBlock() {
         startService(Intent(this, ShortsVpnService::class.java))
     }
@@ -174,4 +188,3 @@ class ShortsAccessibilityService : AccessibilityService() {
         const val YOUTUBE_PACKAGE = "com.google.android.youtube"
     }
 }
-                             
