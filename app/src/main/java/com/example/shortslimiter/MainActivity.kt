@@ -43,7 +43,6 @@ class MainActivity : AppCompatActivity() {
             val prefs = getSharedPreferences(PrefsKeys.PREFS_NAME, MODE_PRIVATE)
             prefs.edit()
                 .putInt(PrefsKeys.KEY_COUNT, 0)
-                .putLong(PrefsKeys.KEY_BLOCKED_UNTIL, 0)
                 .apply()
             updateStatus()
         }
@@ -58,6 +57,19 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Naya limit set hua: $newLimit", Toast.LENGTH_SHORT).show()
                 updateStatus()
             }
+        }
+
+        findViewById<Button>(R.id.btnDebugIds).setOnClickListener {
+            val prefs = getSharedPreferences(PrefsKeys.PREFS_NAME, MODE_PRIVATE)
+            val ids = prefs.getString(
+                "debug_ids",
+                "Koi data nahi mila.\nYouTube Shorts khol ke 2-3 baar scroll karo, fir yahan wapas aao."
+            )
+            android.app.AlertDialog.Builder(this)
+                .setTitle("YouTube Screen ke IDs")
+                .setMessage(ids)
+                .setPositiveButton("OK", null)
+                .show()
         }
     }
 
