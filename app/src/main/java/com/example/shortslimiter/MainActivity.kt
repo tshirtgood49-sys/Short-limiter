@@ -53,8 +53,11 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Sahi number daalo (1 ya usse zyada)", Toast.LENGTH_SHORT).show()
             } else {
                 val prefs = getSharedPreferences(PrefsKeys.PREFS_NAME, MODE_PRIVATE)
-                prefs.edit().putInt(PrefsKeys.KEY_LIMIT, newLimit).apply()
-                Toast.makeText(this, "Naya limit set hua: $newLimit", Toast.LENGTH_SHORT).show()
+                prefs.edit()
+                    .putInt(PrefsKeys.KEY_LIMIT, newLimit)
+                    .putInt(PrefsKeys.KEY_COUNT, 0)
+                    .apply()
+                Toast.makeText(this, "Naya limit set hua: $newLimit (ginti bhi reset hui)", Toast.LENGTH_SHORT).show()
                 updateStatus()
             }
         }
