@@ -32,18 +32,18 @@ class ShortsVpnService : VpnService() {
         try {
             builder.addAllowedApplication(TARGET_PACKAGE)
         } catch (e: Exception) {
-            Toast.makeText(this, "Warning: YouTube allow-list fail (${e.javaClass.simpleName})", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Warning: allow-list fail (${e.javaClass.simpleName})", Toast.LENGTH_LONG).show()
         }
 
         try {
             vpnInterface = builder.establish()
         } catch (e: Exception) {
-            Toast.makeText(this, "VPN start FAIL: ${e.javaClass.simpleName} - ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "VPN start FAIL: ${e.javaClass.simpleName}", Toast.LENGTH_LONG).show()
             return
         }
 
         if (vpnInterface == null) {
-            Toast.makeText(this, "VPN establish() ne null diya - permission revoke hui ho sakti hai", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "VPN establish() null - permission check karo", Toast.LENGTH_LONG).show()
             return
         }
 
