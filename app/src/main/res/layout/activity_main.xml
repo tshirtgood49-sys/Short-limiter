@@ -43,13 +43,6 @@
         android:layout_marginBottom="12dp" />
 
     <Button
-        android:id="@+id/btnVpnPermission"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Step 2: VPN Permission Do (Block ke liye)"
-        android:layout_marginBottom="12dp" />
-
-    <Button
         android:id="@+id/btnReset"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -82,19 +75,5 @@
             android:text="Set Limit" />
 
     </LinearLayout>
-
-    <Button
-        android:id="@+id/btnDebugIds"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Debug: ID List Dekho"
-        android:layout_marginTop="24dp" />
-
-    <Button
-        android:id="@+id/btnEventLog"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Debug: Event Log Dekho"
-        android:layout_marginTop="12dp" />
 
 </LinearLayout>
