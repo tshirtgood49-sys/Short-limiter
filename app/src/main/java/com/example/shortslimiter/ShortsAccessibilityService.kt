@@ -20,10 +20,11 @@ import java.util.Locale
 class ShortsAccessibilityService : AccessibilityService() {
 
     private var lastCountedAt = 0L
-    private val minCountIntervalMs = 1500L
+    private val minCountIntervalMs = 2000L
     private var lastRedirectAt = 0L
-    private val redirectCooldownMs = 1000L
+    private val redirectCooldownMs = 1500L
     private var limitMessageShown = false
+    private var lastShortTitle = ""
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private val motivationMessages = listOf(
@@ -43,8 +44,9 @@ class ShortsAccessibilityService : AccessibilityService() {
         event ?: return
         val pkg = event.packageName?.toString() ?: return
         if (pkg != YOUTUBE_PACKAGE && pkg != INSTAGRAM_PACKAGE) return
-        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-            event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return
+
+        // Sirf WINDOW_STATE_CHANGED — actual screen/page change
+        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
 
         val prefs = getSharedPreferences(PrefsKeys.PREFS_NAME, MODE_PRIVATE)
         resetIfNewDay(prefs)
@@ -53,14 +55,14 @@ class ShortsAccessibilityService : AccessibilityService() {
 
         if (!onShorts) {
             limitMessageShown = false
+            lastShortTitle = ""
             return
         }
 
         val limit = prefs.getInt(PrefsKeys.KEY_LIMIT, PrefsKeys.DEFAULT_LIMIT)
         val count = prefs.getInt(PrefsKeys.KEY_COUNT, 0)
-        val limitReached = count >= limit
 
-        if (limitReached) {
+        if (count >= limit) {
             val now = System.currentTimeMillis()
             if (now - lastRedirectAt > redirectCooldownMs) {
                 lastRedirectAt = now
@@ -73,20 +75,70 @@ class ShortsAccessibilityService : AccessibilityService() {
             return
         }
 
+        // Title se naya Short detect karo
+        val currentTitle = getVideoTitle() ?: ""
         val now = System.currentTimeMillis()
-        if (now - lastCountedAt < minCountIntervalMs) return
-        lastCountedAt = now
 
-        val newCount = count + 1
-        prefs.edit().putInt(PrefsKeys.KEY_COUNT, newCount).apply()
-        updateNotification(newCount, limit)
+        val isNewShort = currentTitle.isNotBlank() &&
+                currentTitle != lastShortTitle &&
+                now - lastCountedAt >= minCountIntervalMs
 
-        if (newCount >= limit) {
-            limitMessageShown = false
+        if (isNewShort) {
+            lastShortTitle = currentTitle
+            lastCountedAt = now
+
+            val newCount = count + 1
+            prefs.edit().putInt(PrefsKeys.KEY_COUNT, newCount).apply()
+            updateNotification(newCount, limit)
+
+            if (newCount >= limit) {
+                limitMessageShown = false
+            }
         }
     }
 
     override fun onInterrupt() {}
+
+    // Video ka title dhoondho — naya Short = naya title
+    private fun getVideoTitle(): String? {
+        val root = rootInActiveWindow ?: return null
+        val titleFragments = listOf("title", "video_title", "reel_title")
+        for (fragment in titleFragments) {
+            val node = findNodeByIdFragment(root, fragment, 0)
+            val text = node?.text?.toString()
+            if (!text.isNullOrBlank()) return text
+        }
+        // Fallback: koi bhi non-blank text node jo meaningful ho
+        return findMeaningfulText(root, 0)
+    }
+
+    private fun findNodeByIdFragment(
+        node: AccessibilityNodeInfo,
+        fragment: String,
+        depth: Int
+    ): AccessibilityNodeInfo? {
+        if (depth > 10) return null
+        val id = node.viewIdResourceName
+        if (id != null && id.contains(fragment, ignoreCase = true)) return node
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val found = findNodeByIdFragment(child, fragment, depth + 1)
+            if (found != null) return found
+        }
+        return null
+    }
+
+    private fun findMeaningfulText(node: AccessibilityNodeInfo, depth: Int): String? {
+        if (depth > 8) return null
+        val text = node.text?.toString()
+        if (!text.isNullOrBlank() && text.length > 5) return text
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val found = findMeaningfulText(child, depth + 1)
+            if (found != null) return found
+        }
+        return null
+    }
 
     private fun isShortsScreen(pkg: String): Boolean {
         val root = rootInActiveWindow ?: return false
@@ -228,6 +280,7 @@ class ShortsAccessibilityService : AccessibilityService() {
                 .putInt(PrefsKeys.KEY_COUNT, 0)
                 .apply()
             limitMessageShown = false
+            lastShortTitle = ""
         }
     }
 
