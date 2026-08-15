@@ -7,11 +7,13 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.content.SharedPreferences
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.Toast
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -21,8 +23,17 @@ class ShortsAccessibilityService : AccessibilityService() {
     private var lastCountedAt = 0L
     private val minCountIntervalMs = 1500L
     private var lastRedirectAt = 0L
-    private val redirectCooldownMs = 2000L
+    private val redirectCooldownMs = 1000L
+    private var limitMessageShown = false
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    private val motivationMessages = listOf(
+        "Bas itna hi! Ab kuch productive karo 💪",
+        "Time qeemti hai - kuch naya seekho aaj ⭐",
+        "Shorts band, ab apna kaam shuru karo 🎯",
+        "Chhod do Shorts, kitaab ya kaam pe focus karo 📚",
+        "Tumhara waqt important hai - sahi jagah lagao 🌟"
+    )
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -39,24 +50,47 @@ class ShortsAccessibilityService : AccessibilityService() {
         val prefs = getSharedPreferences(PrefsKeys.PREFS_NAME, MODE_PRIVATE)
         resetIfNewDay(prefs)
 
-        if (!isShortsScreen(pkg)) return
+        val onShorts = isShortsScreen(pkg)
 
+        if (!onShorts) {
+            // Shorts se bahar aa gaye — message flag reset karo
+            limitMessageShown = false
+            return
+        }
+
+        val limit = prefs.getInt(PrefsKeys.KEY_LIMIT, PrefsKeys.DEFAULT_LIMIT)
+        val count = prefs.getInt(PrefsKeys.KEY_COUNT, 0)
+        val limitReached = count >= limit
+
+        if (limitReached) {
+            // Limit cross — turant redirect, koi delay nahi
+            val now = System.currentTimeMillis()
+            if (now - lastRedirectAt > redirectCooldownMs) {
+                lastRedirectAt = now
+
+                // Sirf ek baar message dikhao
+                if (!limitMessageShown) {
+                    limitMessageShown = true
+                    showToastMessage()
+                }
+
+                // Turant YouTube Home par bhejo
+                redirectToYouTubeHome()
+            }
+            return
+        }
+
+        // Count badhao
         val now = System.currentTimeMillis()
         if (now - lastCountedAt < minCountIntervalMs) return
         lastCountedAt = now
 
-        val count = prefs.getInt(PrefsKeys.KEY_COUNT, 0) + 1
-        prefs.edit().putInt(PrefsKeys.KEY_COUNT, count).apply()
+        val newCount = count + 1
+        prefs.edit().putInt(PrefsKeys.KEY_COUNT, newCount).apply()
+        updateNotification(newCount, limit)
 
-        val limit = prefs.getInt(PrefsKeys.KEY_LIMIT, PrefsKeys.DEFAULT_LIMIT)
-        updateNotification(count, limit)
-
-        if (count > limit) {
-            val timeSinceRedirect = now - lastRedirectAt
-            if (timeSinceRedirect > redirectCooldownMs) {
-                lastRedirectAt = now
-                showBlockedScreen()
-            }
+        if (newCount >= limit) {
+            limitMessageShown = false // Reset taaki pehli baar message dikhe
         }
     }
 
@@ -74,7 +108,11 @@ class ShortsAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun nodeContains(node: AccessibilityNodeInfo, idFragment: String, depth: Int = 0): Boolean {
+    private fun nodeContains(
+        node: AccessibilityNodeInfo,
+        idFragment: String,
+        depth: Int = 0
+    ): Boolean {
         if (depth > 6) return false
         val viewId = node.viewIdResourceName
         if (viewId != null && viewId.contains(idFragment, ignoreCase = true)) return true
@@ -85,11 +123,27 @@ class ShortsAccessibilityService : AccessibilityService() {
         return false
     }
 
-    private fun showBlockedScreen() {
-        val intent = Intent(this, BlockedActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+    private fun redirectToYouTubeHome() {
+        try {
+            val deepLink = Intent(Intent.ACTION_VIEW).apply {
+                data = Uri.parse("https://www.youtube.com/")
+                setPackage(YOUTUBE_PACKAGE)
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP
+                )
+            }
+            startActivity(deepLink)
+        } catch (e: Exception) {
+            performGlobalAction(GLOBAL_ACTION_BACK)
         }
-        startActivity(intent)
+    }
+
+    private fun showToastMessage() {
+        val msg = motivationMessages.random()
+        mainHandler.post {
+            Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun startForegroundNotification() {
@@ -103,13 +157,10 @@ class ShortsAccessibilityService : AccessibilityService() {
             val nm = getSystemService(NotificationManager::class.java)
             nm.createNotificationChannel(channel)
         }
-
         val prefs = getSharedPreferences(PrefsKeys.PREFS_NAME, MODE_PRIVATE)
         val count = prefs.getInt(PrefsKeys.KEY_COUNT, 0)
         val limit = prefs.getInt(PrefsKeys.KEY_LIMIT, PrefsKeys.DEFAULT_LIMIT)
-
-        val notification = buildNotification(channelId, count, limit)
-        startForeground(NOTIF_ID, notification)
+        startForeground(NOTIF_ID, buildNotification(channelId, count, limit))
     }
 
     private fun updateNotification(count: Int, limit: Int) {
@@ -140,6 +191,7 @@ class ShortsAccessibilityService : AccessibilityService() {
                 .putString(PrefsKeys.KEY_DATE, today)
                 .putInt(PrefsKeys.KEY_COUNT, 0)
                 .apply()
+            limitMessageShown = false
         }
     }
 
