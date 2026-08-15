@@ -7,7 +7,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.content.SharedPreferences
-import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -53,7 +52,6 @@ class ShortsAccessibilityService : AccessibilityService() {
         val onShorts = isShortsScreen(pkg)
 
         if (!onShorts) {
-            // Shorts se bahar aa gaye — message flag reset karo
             limitMessageShown = false
             return
         }
@@ -63,24 +61,18 @@ class ShortsAccessibilityService : AccessibilityService() {
         val limitReached = count >= limit
 
         if (limitReached) {
-            // Limit cross — turant redirect, koi delay nahi
             val now = System.currentTimeMillis()
             if (now - lastRedirectAt > redirectCooldownMs) {
                 lastRedirectAt = now
-
-                // Sirf ek baar message dikhao
                 if (!limitMessageShown) {
                     limitMessageShown = true
                     showToastMessage()
                 }
-
-                // Turant YouTube Home par bhejo
                 redirectToYouTubeHome()
             }
             return
         }
 
-        // Count badhao
         val now = System.currentTimeMillis()
         if (now - lastCountedAt < minCountIntervalMs) return
         lastCountedAt = now
@@ -90,7 +82,7 @@ class ShortsAccessibilityService : AccessibilityService() {
         updateNotification(newCount, limit)
 
         if (newCount >= limit) {
-            limitMessageShown = false // Reset taaki pehli baar message dikhe
+            limitMessageShown = false
         }
     }
 
@@ -125,18 +117,62 @@ class ShortsAccessibilityService : AccessibilityService() {
 
     private fun redirectToYouTubeHome() {
         try {
-            val deepLink = Intent(Intent.ACTION_VIEW).apply {
-                data = Uri.parse("https://www.youtube.com/")
-                setPackage(YOUTUBE_PACKAGE)
-                addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP
-                )
-            }
-            startActivity(deepLink)
-        } catch (e: Exception) {
+            val intent = packageManager
+                .getLaunchIntentForPackage(YOUTUBE_PACKAGE)
+            intent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            intent?.let { startActivity(it) }
+        } catch (e: Exception) {}
+
+        mainHandler.postDelayed({
+            clickYouTubeHomeTab()
+        }, 800)
+    }
+
+    private fun clickYouTubeHomeTab() {
+        val root = rootInActiveWindow ?: run {
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            return
+        }
+        val homeNode = findClickableAncestorByLabel(root, "Home")
+        if (homeNode != null) {
+            homeNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        } else {
             performGlobalAction(GLOBAL_ACTION_BACK)
         }
+    }
+
+    private fun findClickableAncestorByLabel(
+        root: AccessibilityNodeInfo,
+        label: String
+    ): AccessibilityNodeInfo? {
+        val match = findNodeByLabel(root, label, 0) ?: return null
+        var current: AccessibilityNodeInfo? = match
+        var hops = 0
+        while (current != null && hops < 6) {
+            if (current.isClickable) return current
+            current = current.parent
+            hops++
+        }
+        return null
+    }
+
+    private fun findNodeByLabel(
+        node: AccessibilityNodeInfo,
+        label: String,
+        depth: Int
+    ): AccessibilityNodeInfo? {
+        if (depth > 14) return null
+        val desc = node.contentDescription?.toString()
+        val text = node.text?.toString()
+        if (desc?.equals(label, ignoreCase = true) == true ||
+            text?.equals(label, ignoreCase = true) == true
+        ) return node
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val found = findNodeByLabel(child, label, depth + 1)
+            if (found != null) return found
+        }
+        return null
     }
 
     private fun showToastMessage() {
