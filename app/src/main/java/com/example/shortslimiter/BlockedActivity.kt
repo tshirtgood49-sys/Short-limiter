@@ -48,10 +48,15 @@ class BlockedActivity : Activity() {
     }
 
     private fun goToYouTubeHome() {
-        val intent = packageManager.getLaunchIntentForPackage("com.google.android.youtube")
-        intent?.let {
-            it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(it)
+        val youtubeIntent = packageManager
+            .getLaunchIntentForPackage("com.google.android.youtube")
+        if (youtubeIntent != null) {
+            youtubeIntent.addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+            )
+            startActivity(youtubeIntent)
         }
         finish()
     }
