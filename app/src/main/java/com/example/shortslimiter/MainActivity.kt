@@ -8,7 +8,6 @@ import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.text.style.ForegroundColorSpan
 import android.widget.Button
-import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -19,20 +18,20 @@ import java.util.Locale
 class MainActivity : AppCompatActivity() {
 
     private lateinit var statusText: TextView
-    private lateinit var editLimit: EditText
     private lateinit var resetUsesText: TextView
     private lateinit var quoteText: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
         statusText = findViewById(R.id.statusText)
-        editLimit = findViewById(R.id.editLimit)
         resetUsesText = findViewById(R.id.resetUsesText)
         quoteText = findViewById(R.id.quoteText)
 
         setupColorfulQuote()
 
+        // Accessibility button
         findViewById<Button>(R.id.btnAccessibility).setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             Toast.makeText(
@@ -42,6 +41,7 @@ class MainActivity : AppCompatActivity() {
             ).show()
         }
 
+        // Reset button
         findViewById<Button>(R.id.btnReset).setOnClickListener {
             val prefs = getSharedPreferences(PrefsKeys.PREFS_NAME, MODE_PRIVATE)
             resetDailyUsesIfNewDay(prefs)
@@ -55,34 +55,32 @@ class MainActivity : AppCompatActivity() {
             }
             prefs.edit().putInt(PrefsKeys.KEY_COUNT, 0).apply()
             updateStatus()
+            Toast.makeText(this, "Ginti reset ho gayi ✅", Toast.LENGTH_SHORT).show()
         }
 
-        findViewById<Button>(R.id.btnSetLimit).setOnClickListener {
-            val prefs = getSharedPreferences(PrefsKeys.PREFS_NAME, MODE_PRIVATE)
-            resetDailyUsesIfNewDay(prefs)
-            val rawLimit = editLimit.text.toString().toIntOrNull()
-            if (rawLimit == null || rawLimit <= 0) {
-                Toast.makeText(this, "Sahi number daalo (1 ya usse zyada)", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            if (!tryConsumeResetUse(prefs)) {
-                Toast.makeText(
-                    this,
-                    "Aaj ke 4 set-limit use ho gaye. Raat 12 baje phir milenge.",
-                    Toast.LENGTH_LONG
-                ).show()
-                return@setOnClickListener
-            }
-            val finalLimit = rawLimit.coerceAtMost(MAX_LIMIT)
-            prefs.edit()
-                .putInt(PrefsKeys.KEY_LIMIT, finalLimit)
-                .putInt(PrefsKeys.KEY_COUNT, 0)
-                .apply()
-            val msg = if (rawLimit > MAX_LIMIT) "Max $MAX_LIMIT allowed, $MAX_LIMIT set kiya"
-            else "Limit set: $finalLimit ✅"
-            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
-            updateStatus()
+        // 3 preset limit buttons
+        findViewById<Button>(R.id.btn5).setOnClickListener { setLimit(5) }
+        findViewById<Button>(R.id.btn15).setOnClickListener { setLimit(15) }
+        findViewById<Button>(R.id.btn25).setOnClickListener { setLimit(25) }
+    }
+
+    private fun setLimit(limit: Int) {
+        val prefs = getSharedPreferences(PrefsKeys.PREFS_NAME, MODE_PRIVATE)
+        resetDailyUsesIfNewDay(prefs)
+        if (!tryConsumeResetUse(prefs)) {
+            Toast.makeText(
+                this,
+                "Aaj ke 4 set-limit use ho gaye. Raat 12 baje phir milenge.",
+                Toast.LENGTH_LONG
+            ).show()
+            return
         }
+        prefs.edit()
+            .putInt(PrefsKeys.KEY_LIMIT, limit)
+            .putInt(PrefsKeys.KEY_COUNT, 0)
+            .apply()
+        Toast.makeText(this, "Limit set: $limit Shorts/din ✅", Toast.LENGTH_SHORT).show()
+        updateStatus()
     }
 
     override fun onResume() {
@@ -96,10 +94,11 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences(PrefsKeys.PREFS_NAME, MODE_PRIVATE)
         val count = prefs.getInt(PrefsKeys.KEY_COUNT, 0)
         val limit = prefs.getInt(PrefsKeys.KEY_LIMIT, PrefsKeys.DEFAULT_LIMIT)
-        val usesLeft = MAX_LIMIT_USES - prefs.getInt(PrefsKeys.KEY_RESET_USES_COUNT, 0)
+        val usesLeft = MAX_LIMIT_USES -
+                prefs.getInt(PrefsKeys.KEY_RESET_USES_COUNT, 0)
         statusText.text = "Aaj dekhe: $count / $limit Shorts"
-        resetUsesText.text = "Reset/Set uses baki: ${usesLeft.coerceAtLeast(0)}/$MAX_LIMIT_USES"
-        editLimit.setText(limit.toString())
+        resetUsesText.text =
+            "Reset/Set uses baki: ${usesLeft.coerceAtLeast(0)}/$MAX_LIMIT_USES"
     }
 
     private fun resetDailyUsesIfNewDay(prefs: SharedPreferences) {
@@ -147,8 +146,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
-        const val VPN_REQUEST_CODE = 100
-        const val MAX_LIMIT = 20
         const val MAX_LIMIT_USES = 4
     }
 }
