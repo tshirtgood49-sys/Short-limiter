@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="32dp"
+    android:background="#1A0033">
+
+    <TextView
+        android:id="@+id/blockedIcon"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="⛔"
+        android:textSize="80sp"
+        android:layout_marginBottom="24dp" />
+
+    <TextView
+        android:id="@+id/blockedTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Aaj ki Limit Poori!"
+        android:textSize="28sp"
+        android:textColor="#FF4081"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:layout_marginBottom="16dp" />
+
+    <TextView
+        android:id="@+id/blockedQuote"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="20sp"
+        android:textColor="#FFD700"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:layout_marginBottom="32dp" />
+
+    <TextView
+        android:id="@+id/blockedTimer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="16sp"
+        android:textColor="#AAAAAA"
+        android:gravity="center" />
+
+</LinearLayout>
