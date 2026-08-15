@@ -2,6 +2,7 @@ package com.example.shortslimiter
 
 import android.app.Activity
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -28,7 +29,9 @@ class BlockedActivity : Activity() {
 
         quoteView.text = quotes.random()
 
-        val pulseAnim = AnimationUtils.loadAnimation(this, android.R.anim.fade_in)
+        val pulseAnim = AnimationUtils.loadAnimation(
+            this, android.R.anim.fade_in
+        )
         iconView.startAnimation(pulseAnim)
 
         var secondsLeft = 3
@@ -48,15 +51,21 @@ class BlockedActivity : Activity() {
     }
 
     private fun goToYouTubeHome() {
-        val youtubeIntent = packageManager
-            .getLaunchIntentForPackage("com.google.android.youtube")
-        if (youtubeIntent != null) {
-            youtubeIntent.addFlags(
-                Intent.FLAG_ACTIVITY_NEW_TASK or
-                Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
-            )
-            startActivity(youtubeIntent)
+        try {
+            val deepLink = Intent(Intent.ACTION_VIEW).apply {
+                data = Uri.parse("https://www.youtube.com/")
+                setPackage("com.google.android.youtube")
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP
+                )
+            }
+            startActivity(deepLink)
+        } catch (e: Exception) {
+            val fallback = packageManager
+                .getLaunchIntentForPackage("com.google.android.youtube")
+            fallback?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            fallback?.let { startActivity(it) }
         }
         finish()
     }
