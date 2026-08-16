@@ -20,12 +20,12 @@ import java.util.Locale
 
 class ShortsAccessibilityService : AccessibilityService() {
 
-    private var lastScrollIndex = -1
     private var lastCountedAt = 0L
-    private val minCountIntervalMs = 1500L
+    private val minCountIntervalMs = 800L
     private var lastRedirectAt = 0L
     private val redirectCooldownMs = 1500L
     private var limitMessageShown = false
+    private var isOnShortsScreen = false
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private val motivationMessages = listOf(
@@ -39,7 +39,6 @@ class ShortsAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         startForegroundNotification()
-        scheduleWatchdog()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -52,15 +51,22 @@ class ShortsAccessibilityService : AccessibilityService() {
 
         val onShorts = isShortsScreen(pkg)
 
+        // Shorts se bahar gaye
         if (!onShorts) {
-            limitMessageShown = false
-            lastScrollIndex = -1
+            if (isOnShortsScreen) {
+                isOnShortsScreen = false
+                limitMessageShown = false
+            }
             return
         }
+
+        // Shorts screen par aa gaye
+        isOnShortsScreen = true
 
         val limit = prefs.getInt(PrefsKeys.KEY_LIMIT, PrefsKeys.DEFAULT_LIMIT)
         val count = prefs.getInt(PrefsKeys.KEY_COUNT, 0)
 
+        // Limit cross ho gayi
         if (count >= limit) {
             val now = System.currentTimeMillis()
             if (now - lastRedirectAt > redirectCooldownMs) {
@@ -74,32 +80,25 @@ class ShortsAccessibilityService : AccessibilityService() {
             return
         }
 
-        // Scroll index se naya Short detect karo
-        val isScrollEvent =
+        // Counting logic:
+        // TYPE_VIEW_SCROLLED = actual swipe/scroll
+        // TYPE_WINDOW_STATE_CHANGED = naya Short load hua
+        val isCountableEvent =
             event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED ||
             event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
 
-        if (!isScrollEvent) return
+        if (!isCountableEvent) return
 
-        val currentIndex = event.fromIndex
         val now = System.currentTimeMillis()
+        if (now - lastCountedAt < minCountIntervalMs) return
+        lastCountedAt = now
 
-        val isNewShort = (currentIndex >= 0 && currentIndex != lastScrollIndex) ||
-                (currentIndex == -1 &&
-                        event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-                        now - lastCountedAt >= minCountIntervalMs)
+        val newCount = count + 1
+        prefs.edit().putInt(PrefsKeys.KEY_COUNT, newCount).apply()
+        updateNotification(newCount, limit)
 
-        if (isNewShort && now - lastCountedAt >= minCountIntervalMs) {
-            lastScrollIndex = currentIndex
-            lastCountedAt = now
-
-            val newCount = count + 1
-            prefs.edit().putInt(PrefsKeys.KEY_COUNT, newCount).apply()
-            updateNotification(newCount, limit)
-
-            if (newCount >= limit) {
-                limitMessageShown = false
-            }
+        if (newCount >= limit) {
+            limitMessageShown = false
         }
     }
 
@@ -107,28 +106,10 @@ class ShortsAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
-        // Self restart attempt
         try {
-            val intent = Intent(applicationContext, ShortsAccessibilityService::class.java)
+            val intent = Intent(applicationContext,
+                ShortsAccessibilityService::class.java)
             startService(intent)
-        } catch (e: Exception) {}
-    }
-
-    // Watchdog — har 15 minute mein AlarmManager check kare
-    private fun scheduleWatchdog() {
-        try {
-            val alarmManager = getSystemService(ALARM_SERVICE) as AlarmManager
-            val intent = Intent(this, MainActivity::class.java)
-            val pi = PendingIntent.getActivity(
-                this, 999, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            alarmManager.setRepeating(
-                AlarmManager.RTC_WAKEUP,
-                System.currentTimeMillis() + 15 * 60 * 1000,
-                15 * 60 * 1000,
-                pi
-            )
         } catch (e: Exception) {}
     }
 
@@ -140,8 +121,8 @@ class ShortsAccessibilityService : AccessibilityService() {
             INSTAGRAM_PACKAGE ->
                 nodeContains(root, "clips_viewer") ||
                 nodeContains(root, "reel_viewer") ||
-                nodeContains(root, "reels") ||
-                nodeContains(root, "reel")
+                nodeContains(root, "reel") ||
+                nodeContains(root, "reels")
             else -> false
         }
     }
@@ -168,9 +149,7 @@ class ShortsAccessibilityService : AccessibilityService() {
             intent?.let { startActivity(it) }
         } catch (e: Exception) {}
 
-        mainHandler.postDelayed({
-            clickHomeTab()
-        }, 800)
+        mainHandler.postDelayed({ clickHomeTab() }, 800)
     }
 
     private fun clickHomeTab() {
@@ -282,7 +261,7 @@ class ShortsAccessibilityService : AccessibilityService() {
                 .putInt(PrefsKeys.KEY_COUNT, 0)
                 .apply()
             limitMessageShown = false
-            lastScrollIndex = -1
+            isOnShortsScreen = false
         }
     }
 
