@@ -33,7 +33,6 @@ class MainActivity : AppCompatActivity() {
 
         setupColorfulQuote()
 
-        // Android 13+ notification permission
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) {
@@ -44,7 +43,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Accessibility check — agar band hai to banner dikhao
         checkAccessibilityStatus()
 
         findViewById<Button>(R.id.btnAccessibility).setOnClickListener {
@@ -58,23 +56,33 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<Button>(R.id.btnReset).setOnClickListener {
             val prefs = getSharedPreferences(PrefsKeys.PREFS_NAME, MODE_PRIVATE)
-            resetDailyUsesIfNewDay(prefs)
-            if (!tryConsumeResetUse(prefs)) {
-                Toast.makeText(
-                    this,
-                    "Aaj ke 4 reset use ho gaye. Raat 12 baje phir milenge.",
-                    Toast.LENGTH_LONG
-                ).show()
-                return@setOnClickListener
-            }
-            prefs.edit().putInt(PrefsKeys.KEY_COUNT, 0).apply()
+            prefs.edit()
+                .putString("scroll_log", "")
+                .putInt(PrefsKeys.KEY_COUNT, 0)
+                .apply()
             updateStatus()
-            Toast.makeText(this, "Ginti reset ho gayi ✅", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Log aur count reset ✅", Toast.LENGTH_SHORT).show()
         }
 
-        findViewById<Button>(R.id.btn5).setOnClickListener { setLimit(5) }
-        findViewById<Button>(R.id.btn15).setOnClickListener { setLimit(15) }
-        findViewById<Button>(R.id.btn25).setOnClickListener { setLimit(25) }
+        // Debug scroll log button
+        findViewById<Button>(R.id.btn5).setOnClickListener {
+            val prefs = getSharedPreferences(PrefsKeys.PREFS_NAME, MODE_PRIVATE)
+            val log = prefs.getString("scroll_log",
+                "Koi data nahi.\nYouTube Shorts kholo, tab scroll karo,\nphir actual Shorts swipe karo.")
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Scroll Event Log")
+                .setMessage(log)
+                .setPositiveButton("OK", null)
+                .show()
+        }
+
+        // Limit buttons temporarily disabled
+        findViewById<Button>(R.id.btn15).setOnClickListener {
+            Toast.makeText(this, "Debug mode mein disabled", Toast.LENGTH_SHORT).show()
+        }
+        findViewById<Button>(R.id.btn25).setOnClickListener {
+            Toast.makeText(this, "Debug mode mein disabled", Toast.LENGTH_SHORT).show()
+        }
     }
 
     override fun onResume() {
@@ -91,10 +99,10 @@ class MainActivity : AppCompatActivity() {
         if (enabled) {
             btn.text = "✅ Accessibility ON hai"
         } else {
-            btn.text = "⚠️ Accessibility OFF hai - Tap karo"
+            btn.text = "⚠️ Accessibility OFF - Tap karo"
             Toast.makeText(
                 this,
-                "⚠️ Shorts Limiter band hai! Accessibility ON karo.",
+                "⚠️ Shorts Limiter band hai! ON karo.",
                 Toast.LENGTH_LONG
             ).show()
         }
@@ -110,34 +118,12 @@ class MainActivity : AppCompatActivity() {
         return enabledServices.contains(expectedService)
     }
 
-    private fun setLimit(limit: Int) {
-        val prefs = getSharedPreferences(PrefsKeys.PREFS_NAME, MODE_PRIVATE)
-        resetDailyUsesIfNewDay(prefs)
-        if (!tryConsumeResetUse(prefs)) {
-            Toast.makeText(
-                this,
-                "Aaj ke 4 set-limit use ho gaye. Raat 12 baje phir milenge.",
-                Toast.LENGTH_LONG
-            ).show()
-            return
-        }
-        prefs.edit()
-            .putInt(PrefsKeys.KEY_LIMIT, limit)
-            .putInt(PrefsKeys.KEY_COUNT, 0)
-            .apply()
-        Toast.makeText(this, "Limit set: $limit Shorts/din ✅", Toast.LENGTH_SHORT).show()
-        updateStatus()
-    }
-
     private fun updateStatus() {
         val prefs = getSharedPreferences(PrefsKeys.PREFS_NAME, MODE_PRIVATE)
         val count = prefs.getInt(PrefsKeys.KEY_COUNT, 0)
         val limit = prefs.getInt(PrefsKeys.KEY_LIMIT, PrefsKeys.DEFAULT_LIMIT)
-        val usesLeft = MAX_LIMIT_USES -
-                prefs.getInt(PrefsKeys.KEY_RESET_USES_COUNT, 0)
-        statusText.text = "Aaj dekhe: $count / $limit Shorts"
-        resetUsesText.text =
-            "Reset/Set uses baki: ${usesLeft.coerceAtLeast(0)}/$MAX_LIMIT_USES"
+        statusText.text = "DEBUG MODE — Count: $count / $limit"
+        resetUsesText.text = "btn5 = Scroll Log dekho | btnReset = log saaf karo"
     }
 
     private fun resetDailyUsesIfNewDay(prefs: SharedPreferences) {
@@ -148,13 +134,6 @@ class MainActivity : AppCompatActivity() {
                 .putInt(PrefsKeys.KEY_RESET_USES_COUNT, 0)
                 .apply()
         }
-    }
-
-    private fun tryConsumeResetUse(prefs: SharedPreferences): Boolean {
-        val used = prefs.getInt(PrefsKeys.KEY_RESET_USES_COUNT, 0)
-        if (used >= MAX_LIMIT_USES) return false
-        prefs.edit().putInt(PrefsKeys.KEY_RESET_USES_COUNT, used + 1).apply()
-        return true
     }
 
     private fun setupColorfulQuote() {
