@@ -1,6 +1,7 @@
 package com.example.shortslimiter
 
 import android.accessibilityservice.AccessibilityService
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -19,12 +20,12 @@ import java.util.Locale
 
 class ShortsAccessibilityService : AccessibilityService() {
 
+    private var lastScrollIndex = -1
     private var lastCountedAt = 0L
-    private val minCountIntervalMs = 2000L
+    private val minCountIntervalMs = 1500L
     private var lastRedirectAt = 0L
     private val redirectCooldownMs = 1500L
     private var limitMessageShown = false
-    private var lastShortTitle = ""
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private val motivationMessages = listOf(
@@ -38,15 +39,13 @@ class ShortsAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         startForegroundNotification()
+        scheduleWatchdog()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         event ?: return
         val pkg = event.packageName?.toString() ?: return
         if (pkg != YOUTUBE_PACKAGE && pkg != INSTAGRAM_PACKAGE) return
-
-        // Sirf WINDOW_STATE_CHANGED — actual screen/page change
-        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
 
         val prefs = getSharedPreferences(PrefsKeys.PREFS_NAME, MODE_PRIVATE)
         resetIfNewDay(prefs)
@@ -55,7 +54,7 @@ class ShortsAccessibilityService : AccessibilityService() {
 
         if (!onShorts) {
             limitMessageShown = false
-            lastShortTitle = ""
+            lastScrollIndex = -1
             return
         }
 
@@ -70,21 +69,28 @@ class ShortsAccessibilityService : AccessibilityService() {
                     limitMessageShown = true
                     showToastMessage()
                 }
-                redirectToYouTubeHome()
+                redirectToHome(pkg)
             }
             return
         }
 
-        // Title se naya Short detect karo
-        val currentTitle = getVideoTitle() ?: ""
+        // Scroll index se naya Short detect karo
+        val isScrollEvent =
+            event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED ||
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+
+        if (!isScrollEvent) return
+
+        val currentIndex = event.fromIndex
         val now = System.currentTimeMillis()
 
-        val isNewShort = currentTitle.isNotBlank() &&
-                currentTitle != lastShortTitle &&
-                now - lastCountedAt >= minCountIntervalMs
+        val isNewShort = (currentIndex >= 0 && currentIndex != lastScrollIndex) ||
+                (currentIndex == -1 &&
+                        event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+                        now - lastCountedAt >= minCountIntervalMs)
 
-        if (isNewShort) {
-            lastShortTitle = currentTitle
+        if (isNewShort && now - lastCountedAt >= minCountIntervalMs) {
+            lastScrollIndex = currentIndex
             lastCountedAt = now
 
             val newCount = count + 1
@@ -99,45 +105,31 @@ class ShortsAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() {}
 
-    // Video ka title dhoondho — naya Short = naya title
-    private fun getVideoTitle(): String? {
-        val root = rootInActiveWindow ?: return null
-        val titleFragments = listOf("title", "video_title", "reel_title")
-        for (fragment in titleFragments) {
-            val node = findNodeByIdFragment(root, fragment, 0)
-            val text = node?.text?.toString()
-            if (!text.isNullOrBlank()) return text
-        }
-        // Fallback: koi bhi non-blank text node jo meaningful ho
-        return findMeaningfulText(root, 0)
+    override fun onDestroy() {
+        super.onDestroy()
+        // Self restart attempt
+        try {
+            val intent = Intent(applicationContext, ShortsAccessibilityService::class.java)
+            startService(intent)
+        } catch (e: Exception) {}
     }
 
-    private fun findNodeByIdFragment(
-        node: AccessibilityNodeInfo,
-        fragment: String,
-        depth: Int
-    ): AccessibilityNodeInfo? {
-        if (depth > 10) return null
-        val id = node.viewIdResourceName
-        if (id != null && id.contains(fragment, ignoreCase = true)) return node
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            val found = findNodeByIdFragment(child, fragment, depth + 1)
-            if (found != null) return found
-        }
-        return null
-    }
-
-    private fun findMeaningfulText(node: AccessibilityNodeInfo, depth: Int): String? {
-        if (depth > 8) return null
-        val text = node.text?.toString()
-        if (!text.isNullOrBlank() && text.length > 5) return text
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            val found = findMeaningfulText(child, depth + 1)
-            if (found != null) return found
-        }
-        return null
+    // Watchdog — har 15 minute mein AlarmManager check kare
+    private fun scheduleWatchdog() {
+        try {
+            val alarmManager = getSystemService(ALARM_SERVICE) as AlarmManager
+            val intent = Intent(this, MainActivity::class.java)
+            val pi = PendingIntent.getActivity(
+                this, 999, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            alarmManager.setRepeating(
+                AlarmManager.RTC_WAKEUP,
+                System.currentTimeMillis() + 15 * 60 * 1000,
+                15 * 60 * 1000,
+                pi
+            )
+        } catch (e: Exception) {}
     }
 
     private fun isShortsScreen(pkg: String): Boolean {
@@ -145,9 +137,11 @@ class ShortsAccessibilityService : AccessibilityService() {
         if (root.packageName?.toString() != pkg) return false
         return when (pkg) {
             YOUTUBE_PACKAGE -> nodeContains(root, "reel_recycler")
-            INSTAGRAM_PACKAGE -> nodeContains(root, "clips_viewer") ||
-                    nodeContains(root, "reel_viewer") ||
-                    nodeContains(root, "reels")
+            INSTAGRAM_PACKAGE ->
+                nodeContains(root, "clips_viewer") ||
+                nodeContains(root, "reel_viewer") ||
+                nodeContains(root, "reels") ||
+                nodeContains(root, "reel")
             else -> false
         }
     }
@@ -167,20 +161,19 @@ class ShortsAccessibilityService : AccessibilityService() {
         return false
     }
 
-    private fun redirectToYouTubeHome() {
+    private fun redirectToHome(pkg: String) {
         try {
-            val intent = packageManager
-                .getLaunchIntentForPackage(YOUTUBE_PACKAGE)
+            val intent = packageManager.getLaunchIntentForPackage(pkg)
             intent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             intent?.let { startActivity(it) }
         } catch (e: Exception) {}
 
         mainHandler.postDelayed({
-            clickYouTubeHomeTab()
+            clickHomeTab()
         }, 800)
     }
 
-    private fun clickYouTubeHomeTab() {
+    private fun clickHomeTab() {
         val root = rootInActiveWindow ?: run {
             performGlobalAction(GLOBAL_ACTION_BACK)
             return
@@ -188,9 +181,14 @@ class ShortsAccessibilityService : AccessibilityService() {
         val homeNode = findClickableAncestorByLabel(root, "Home")
         if (homeNode != null) {
             homeNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-        } else {
-            performGlobalAction(GLOBAL_ACTION_BACK)
+            return
         }
+        val feedNode = findClickableAncestorByLabel(root, "Feed")
+        if (feedNode != null) {
+            feedNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            return
+        }
+        performGlobalAction(GLOBAL_ACTION_BACK)
     }
 
     private fun findClickableAncestorByLabel(
@@ -257,7 +255,11 @@ class ShortsAccessibilityService : AccessibilityService() {
         nm.notify(NOTIF_ID, buildNotification(channelId, count, limit))
     }
 
-    private fun buildNotification(channelId: String, count: Int, limit: Int): Notification {
+    private fun buildNotification(
+        channelId: String,
+        count: Int,
+        limit: Int
+    ): Notification {
         val intent = Intent(this, MainActivity::class.java)
         val pi = PendingIntent.getActivity(
             this, 0, intent,
@@ -280,7 +282,7 @@ class ShortsAccessibilityService : AccessibilityService() {
                 .putInt(PrefsKeys.KEY_COUNT, 0)
                 .apply()
             limitMessageShown = false
-            lastShortTitle = ""
+            lastScrollIndex = -1
         }
     }
 
