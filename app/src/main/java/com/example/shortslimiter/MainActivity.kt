@@ -2,6 +2,8 @@ package com.example.shortslimiter
 
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.text.Spannable
@@ -31,7 +33,20 @@ class MainActivity : AppCompatActivity() {
 
         setupColorfulQuote()
 
-        // Accessibility button
+        // Android 13+ notification permission
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(
+                    arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                    101
+                )
+            }
+        }
+
+        // Accessibility check — agar band hai to banner dikhao
+        checkAccessibilityStatus()
+
         findViewById<Button>(R.id.btnAccessibility).setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             Toast.makeText(
@@ -41,7 +56,6 @@ class MainActivity : AppCompatActivity() {
             ).show()
         }
 
-        // Reset button
         findViewById<Button>(R.id.btnReset).setOnClickListener {
             val prefs = getSharedPreferences(PrefsKeys.PREFS_NAME, MODE_PRIVATE)
             resetDailyUsesIfNewDay(prefs)
@@ -58,10 +72,42 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Ginti reset ho gayi ✅", Toast.LENGTH_SHORT).show()
         }
 
-        // 3 preset limit buttons
         findViewById<Button>(R.id.btn5).setOnClickListener { setLimit(5) }
         findViewById<Button>(R.id.btn15).setOnClickListener { setLimit(15) }
         findViewById<Button>(R.id.btn25).setOnClickListener { setLimit(25) }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val prefs = getSharedPreferences(PrefsKeys.PREFS_NAME, MODE_PRIVATE)
+        resetDailyUsesIfNewDay(prefs)
+        updateStatus()
+        checkAccessibilityStatus()
+    }
+
+    private fun checkAccessibilityStatus() {
+        val enabled = isAccessibilityServiceEnabled()
+        val btn = findViewById<Button>(R.id.btnAccessibility)
+        if (enabled) {
+            btn.text = "✅ Accessibility ON hai"
+        } else {
+            btn.text = "⚠️ Accessibility OFF hai - Tap karo"
+            Toast.makeText(
+                this,
+                "⚠️ Shorts Limiter band hai! Accessibility ON karo.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    private fun isAccessibilityServiceEnabled(): Boolean {
+        val expectedService =
+            "$packageName/${ShortsAccessibilityService::class.java.name}"
+        val enabledServices = Settings.Secure.getString(
+            contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+        return enabledServices.contains(expectedService)
     }
 
     private fun setLimit(limit: Int) {
@@ -80,13 +126,6 @@ class MainActivity : AppCompatActivity() {
             .putInt(PrefsKeys.KEY_COUNT, 0)
             .apply()
         Toast.makeText(this, "Limit set: $limit Shorts/din ✅", Toast.LENGTH_SHORT).show()
-        updateStatus()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        val prefs = getSharedPreferences(PrefsKeys.PREFS_NAME, MODE_PRIVATE)
-        resetDailyUsesIfNewDay(prefs)
         updateStatus()
     }
 
