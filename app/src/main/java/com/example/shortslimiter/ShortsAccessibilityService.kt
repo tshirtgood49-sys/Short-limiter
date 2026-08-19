@@ -19,16 +19,13 @@ import java.util.Locale
 
 class ShortsAccessibilityService : AccessibilityService() {
 
-    // Counting
     private var wasOnShorts = false
     private var lastCountedAt = 0L
     private val minCountIntervalMs = 1200L
-
-    // Redirect
     private var lastRedirectAt = 0L
     private val redirectCooldownMs = 1500L
     private var limitMessageShown = false
-
+    private var currentEvent: AccessibilityEvent? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private val motivationMessages = listOf(
@@ -42,49 +39,49 @@ class ShortsAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         startForegroundNotification()
+        ServiceKeepAliveWorker.schedule(this)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         event ?: return
+        currentEvent = event
         val pkg = event.packageName?.toString() ?: return
-        if (pkg != YOUTUBE_PACKAGE && pkg != INSTAGRAM_PACKAGE) return
 
         val prefs = getSharedPreferences(PrefsKeys.PREFS_NAME, MODE_PRIVATE)
         resetIfNewDay(prefs)
 
+        // Browser mein YouTube Shorts detect karo
+        if (isBrowser(pkg)) {
+            val url = event.text?.joinToString("") ?: ""
+            if (url.contains("youtube.com/shorts", ignoreCase = true)) {
+                handleLimitCheck(prefs, pkg, isBrowser = true)
+            }
+            return
+        }
+
+        if (pkg != YOUTUBE_PACKAGE && pkg != INSTAGRAM_PACKAGE) return
+
         val onShorts = isShortsScreen(pkg)
 
         when {
-            // Case 1: Shorts se bahar aa gaye
             !onShorts && wasOnShorts -> {
                 wasOnShorts = false
                 limitMessageShown = false
             }
-
-            // Case 2: Shorts par hain
             onShorts -> {
                 val limit = prefs.getInt(PrefsKeys.KEY_LIMIT, PrefsKeys.DEFAULT_LIMIT)
                 val count = prefs.getInt(PrefsKeys.KEY_COUNT, 0)
 
-                // Limit cross — redirect karo
                 if (count >= limit) {
-                    val now = System.currentTimeMillis()
-                    if (now - lastRedirectAt > redirectCooldownMs) {
-                        lastRedirectAt = now
-                        if (!limitMessageShown) {
-                            limitMessageShown = true
-                            showToastMessage()
-                        }
-                        redirectToHome(pkg)
-                    }
+                    handleLimitCheck(prefs, pkg, isBrowser = false)
                     wasOnShorts = true
                     return
                 }
 
-                // WIN_STATE = naya Short load hua
-                // Sirf tab jab PEHLE SE Shorts par the (wasOnShorts = true)
+                // Naya Short count karo — sirf WIN_STATE par aur pehle se Shorts par the
                 if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
-                    && wasOnShorts) {
+                    && wasOnShorts
+                ) {
                     val now = System.currentTimeMillis()
                     if (now - lastCountedAt >= minCountIntervalMs) {
                         lastCountedAt = now
@@ -105,9 +102,39 @@ class ShortsAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         super.onDestroy()
         try {
-            startService(Intent(applicationContext,
-                ShortsAccessibilityService::class.java))
+            startService(
+                Intent(applicationContext, ShortsAccessibilityService::class.java)
+            )
         } catch (e: Exception) {}
+    }
+
+    private fun handleLimitCheck(
+        prefs: SharedPreferences,
+        pkg: String,
+        isBrowser: Boolean
+    ) {
+        val now = System.currentTimeMillis()
+        if (now - lastRedirectAt > redirectCooldownMs) {
+            lastRedirectAt = now
+            if (!limitMessageShown) {
+                limitMessageShown = true
+                showToastMessage()
+            }
+            if (isBrowser) {
+                performGlobalAction(GLOBAL_ACTION_HOME)
+            } else {
+                redirectToHome(pkg)
+            }
+        }
+    }
+
+    private fun isBrowser(pkg: String): Boolean {
+        return pkg.contains("chrome", ignoreCase = true) ||
+                pkg.contains("browser", ignoreCase = true) ||
+                pkg.contains("firefox", ignoreCase = true) ||
+                pkg.contains("opera", ignoreCase = true) ||
+                pkg == "com.android.browser" ||
+                pkg == "org.mozilla.firefox"
     }
 
     private fun isShortsScreen(pkg: String): Boolean {
@@ -119,7 +146,8 @@ class ShortsAccessibilityService : AccessibilityService() {
                 nodeContains(root, "clips_viewer") ||
                 nodeContains(root, "reel_viewer") ||
                 nodeContains(root, "reel") ||
-                nodeContains(root, "reels")
+                nodeContains(root, "reels") ||
+                nodeContains(root, "clips")
             else -> false
         }
     }
